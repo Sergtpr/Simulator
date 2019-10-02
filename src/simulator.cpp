@@ -1,0 +1,184 @@
+#include "simulator.hpp"
+
+#include "bfieldbldr.hpp"
+#include "geombldr.hpp"
+#include "parameters.hpp"
+#include "confbldr.hpp"
+#include "fileman.hpp"
+
+#include <iostream>
+#include "readascii.hpp"
+#include "gtkplotter.hpp"
+#include <fstream>
+#include "ibsimu.hpp"
+
+using Solids = std::vector<std::pair<Solid*, double>>;
+
+Simulator::Simulator(const FileMan& fm, int n_o_p)
+	: _n_o_p(n_o_p), _fm(fm), _gb(fm), 
+	_bb(fm), _cb(fm), _par(fm),
+	_geom(MODE_3D, _gb.get_meshsize(n_o_p), _gb.get_origin(n_o_p), _gb.get_h(n_o_p)),
+	_solver( _geom ),
+	_bfield( MODE_3D, fout, _geom.size(), _geom.origo(), _geom.h() ),
+	_pdb( _geom ), _scharge( _geom ), _epot( _geom ), _efield( _epot )
+	{
+
+		{
+			_geom.set_boundary( 1, Bound(BOUND_NEUMANN,     0.0  ) );
+			_geom.set_boundary( 2, Bound(BOUND_NEUMANN,     0.0  ) );
+			_geom.set_boundary( 3, Bound(BOUND_NEUMANN,     0.0  ) );
+			_geom.set_boundary( 4, Bound(BOUND_NEUMANN,     0.0  ) );
+			_geom.set_boundary( 5, Bound(BOUND_NEUMANN,     0.0  ) );
+
+			if (n_o_p == _gb.num_of_parts - 1){
+				_geom.set_boundary( 6, Bound(BOUND_DIRICHLET,   _par.V.at("puller")  ) );
+			} else {
+				_geom.set_boundary( 6, Bound(BOUND_NEUMANN,     0.0  ) );
+			}
+		}
+
+	bool pmirror[6] = { false, false, false, false, false, false };
+	_pdb.set_mirror( pmirror );	
+
+	field_extrpl_e efldextrpl[6] = { FIELD_EXTRAPOLATE, FIELD_EXTRAPOLATE, 
+		FIELD_EXTRAPOLATE, FIELD_EXTRAPOLATE, 
+		FIELD_EXTRAPOLATE, FIELD_EXTRAPOLATE };
+	_efield.set_extrapolation( efldextrpl );
+
+}
+
+void Simulator::set_solids(const Solids& solids){
+	for (const auto& solid : solids){
+		int solid_number = 7 + _geom.number_of_solids();
+		_geom.set_solid(solid_number, solid.first);
+		_geom.set_boundary(solid_number, Bound(BOUND_DIRICHLET, solid.second));
+	}
+	_geom.build_mesh();
+	_geom.build_surface();
+}
+
+void Simulator::add_beam(){
+	if (_n_o_p == 0){
+		for (const auto& beam : _par.beam){
+			double frac = beam.J/_par.Jtotal;
+			_pdb.add_cylindrical_beam_with_energy(
+				_cb.N*frac, beam.J, beam.q, beam.m, _cb.Energy, 
+				0.0, _cb.Ti, Vec3D(0, 0, _gb.start_of_beam), 
+				Vec3D(1, 0, 0), Vec3D(0, 1, 0), _gb.rad_beam);
+		}
+	} else {
+		input_particles();
+	}
+}
+
+void Simulator::input_particles(){
+	ReadAscii din( "particles.txt", 10 );
+	std::cout << "Reading " << din.rows() << " particles\n";
+	// Go through all read particles
+	for( size_t j = 0; j < din.rows(); j++ ) {
+		double I  = din[0][j];
+		double m  = din[1][j];
+		double q  = din[2][j];
+		double t  = din[3][j];
+		double x  = din[4][j];
+		double vx = din[5][j];
+		double y  = din[6][j];
+		double vy = din[7][j];
+		double z  = din[8][j];
+		double vz = din[9][j];
+		_pdb.add_particle( I, q/CHARGE_E, m/MASS_U, ParticleP3D(t,x,vx,y,vy,z,vz) );
+	}
+}
+
+void Simulator::output_particles(){
+	// Writing output file containing all particles:
+		std::ofstream fileOut( "particles.txt" );
+		for( size_t k = 0; k < _pdb.size(); k++ ) {
+
+		Particle3D &pp = _pdb.particle( k );
+
+		// Skip electrons
+		if( pp.m() < 0.5*MASS_U )
+		    continue;
+
+		// Skip ions not at the end
+		if( pp(PARTICLE_Z) < (_geom.max(2)-_geom.h()) )
+		    continue;
+
+		// Plot particle I, m, coordinates
+		// 3D has 7 coordinates
+		fileOut << std::setw(12) << pp.IQ() << " ";
+		fileOut << std::setw(12) << pp.m() << " ";
+		fileOut << std::setw(12) << pp.q() << " ";
+		for( size_t j = 0; j < 7; j ++ )
+		    fileOut << std::setw(12) << pp(j) << " ";
+			fileOut << "\n";
+		}
+		fileOut.close();
+}
+
+void Simulator::set_bfield(){
+	for (const auto& item : _par.bf_scale){
+		_bb.bfobjs.at(item.first).scale = item.second;
+	}
+	_bb.add_to_bfield(_bfield, _geom, _n_o_p);
+}
+
+void Simulator::compute(){
+	InitialPlasma init_plasma( AXIS_Z, _gb.plasma_bound );
+	_solver.set_initial_plasma( _cb.Vplasma, &init_plasma );	
+	MeshScalarField scharge_ave( _geom );
+	
+	size_t i = 0;
+	while ( i < _cb.Ncycles ){
+
+		ibsimu.message(1) << "Major cycle " << i << "\n";
+		ibsimu.message(1) << "-----------------------\n";
+
+		if (_n_o_p == 0){
+			if( i == 1 ) {
+				double rhoe = _pdb.get_rhosum();
+				_solver.set_pexp_plasma( -rhoe, _cb.Te, _cb.Vplasma );
+			}
+		}
+		
+		_solver.solve( _epot, scharge_ave );
+		_efield.recalculate();
+		
+		_pdb.clear();
+
+		add_beam();
+
+		_pdb.iterate_trajectories( _scharge, _efield, _bfield );
+
+		// Space charge averaging and compensation
+			uint32_t nodecount = _scharge.nodecount();
+			double scc_ = 1 - _par.scc;
+			for( size_t b = 0; b < nodecount; b++) {
+				_scharge(b) = scc_*_scharge(b);
+			}
+			if (i == 0){
+				scharge_ave = _scharge;
+			} else {
+				double sc_alpha = 1.0;
+				double sc_beta = 1 - sc_alpha;
+				for (size_t b = 0; b < nodecount; b++){
+					scharge_ave(b) = sc_alpha*_scharge(b) + sc_beta*scharge_ave(b);
+				}
+			}
+		i++;
+	}
+	output_particles();
+}
+
+void Simulator::interactive_plot(int* argc, char*** argv){
+	GTKPlotter plotter( argc, argv );
+	plotter.set_geometry( &_geom );
+	plotter.set_epot( &_epot );
+	plotter.set_scharge( &_scharge );
+	plotter.set_particledatabase( &_pdb );
+	plotter.set_bfield( &_bfield );
+	plotter.set_efield( &_efield );
+	plotter.new_geometry_plot_window();
+	plotter.run();
+}
