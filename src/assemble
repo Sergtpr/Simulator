@@ -1,0 +1,4 @@
+#!/bin/bash
+
+make 
+g++ -shared -o simu_lib.so fileman.o bfieldbldr.o confbldr.o geombldr.o parameters.o simulator.o solidbldr.o
