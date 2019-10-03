@@ -10,9 +10,12 @@
 #include "readascii.hpp"
 #include "gtkplotter.hpp"
 #include <fstream>
-#include "ibsimu.hpp"
+ #include "ibsimu.hpp"
 
 using Solids = std::vector<std::pair<Solid*, double>>;
+
+template <class T> T max(const std::vector<T> vec);
+std::vector<double> GetEmitParametersFromPDB3D(const Geometry& geom, const ParticleDataBase3D& pdb);
 
 Simulator::Simulator(const FileMan& fm, int n_o_p)
 	: _n_o_p(n_o_p), _fm(fm), _gb(fm), 
@@ -128,9 +131,12 @@ void Simulator::compute(){
 	InitialPlasma init_plasma( AXIS_Z, _gb.plasma_bound );
 	_solver.set_initial_plasma( _cb.Vplasma, &init_plasma );	
 	MeshScalarField scharge_ave( _geom );
-	
+	MeshScalarField scharge1( _geom );
+	ParticleDataBase3D pdb1( _geom );
+
+	bool convergence = false;
 	size_t i = 0;
-	while ( i < _cb.Ncycles ){
+	while ( !convergence && i < _cb.Ncycles ){
 
 		ibsimu.message(1) << "Major cycle " << i << "\n";
 		ibsimu.message(1) << "-----------------------\n";
@@ -166,6 +172,16 @@ void Simulator::compute(){
 					scharge_ave(b) = sc_alpha*_scharge(b) + sc_beta*scharge_ave(b);
 				}
 			}
+		if ( i == 0){
+			scharge1 = _scharge;
+			pdb1 = _pdb;
+		} else {
+			bool emit_conv = emit_convergence(pdb1);
+			bool scharge_conv = scharge_convergence(scharge1);
+			convergence = emit_conv || scharge_conv;
+			scharge1 = _scharge;
+			pdb1 = _pdb;
+		}
 		i++;
 	}
 	output_particles();
@@ -181,4 +197,74 @@ void Simulator::interactive_plot(int* argc, char*** argv){
 	plotter.set_efield( &_efield );
 	plotter.new_geometry_plot_window();
 	plotter.run();
+}
+
+bool Simulator::emit_convergence(const ParticleDataBase3D& pdb, double max_error) const {
+	std::vector<double> params = GetEmitParametersFromPDB3D( _geom, _pdb );
+	std::vector<double> params1 = GetEmitParametersFromPDB3D( _geom, pdb );
+	std::vector<double> error;
+	for (size_t i = 0; i < params.size(); i++){
+		error.push_back( abs((params1[i] - params[i])/params[i]) );
+	}
+	std::cout << "--------------------------------------" << std::endl;
+	std::cout << "simulation error(emittance method): " << max(error) << std::endl;
+
+
+	if ( max(error) < max_error ){
+		std::cout << "Simulation converged (emittance method)." << std::endl;
+		std::cout << "--------------------------------------" << std::endl;
+		return true;
+	} else {
+		std::cout << "--------------------------------------" << std::endl;
+		return false;
+	}
+}
+
+bool Simulator::scharge_convergence(const MeshScalarField& scharge, double max_error) const {
+	uint32_t nodecount = _scharge.nodecount();
+	double d_norm = 0, norm = 0, error_sc;
+	for (uint32_t b = 0; b < nodecount; b++){
+		d_norm += (_scharge(b) - scharge(b))*(_scharge(b) - scharge(b));
+		norm += _scharge(b)*_scharge(b);
+	}
+	error_sc = sqrt(d_norm/norm);
+	std::cout << "--------------------------------------" << std::endl;
+	std::cout << "simulation error(space charge method): "  << error_sc << std::endl;
+
+	if (error_sc < max_error){
+		std::cout << "Simulation converged (space charge method)." << std::endl;
+		std::cout << "--------------------------------------" << std::endl;	
+		return true;
+	} else {
+		std::cout << "--------------------------------------" << std::endl;	
+		return false;			
+	}
+}
+
+template <class T> T max(const std::vector<T> vec){
+		T temp = vec[0];
+		for (size_t i = 1; i < vec.size(); i++)
+			temp = temp > vec[i] ? temp : vec[i];
+		return temp;
+	}
+
+std::vector<double> GetEmitParametersFromPDB3D(const Geometry& geom, const ParticleDataBase3D& pdb){
+	std::vector<double> result;
+	TrajectoryDiagnosticData tdata;
+	std::vector<trajectory_diagnostic_e> diag;
+		diag.push_back( DIAG_X );
+		diag.push_back( DIAG_XP );
+		diag.push_back( DIAG_CURR );
+	
+	pdb.trajectories_at_plane( tdata, AXIS_Z, geom.max(2), diag );
+		Emittance emit( tdata(0).data(), tdata(1).data(), tdata(2).data() );
+		double alpha = emit.alpha();
+		result.push_back(alpha);
+		double beta = emit.beta();
+		result.push_back(beta);
+		double gamma = emit.gamma();
+		result.push_back(gamma);
+		double epsilon = emit.epsilon();
+		result.push_back(epsilon);
+		return result;
 }

@@ -36,8 +36,6 @@ public:
 	EpotField _epot;
 	EpotEfield _efield;
 	
-
-	
 	Simulator(const FileMan& fm, int n_o_p);
 	void add_beam();
 	void set_solids(const Solids& solids);
@@ -46,6 +44,9 @@ public:
 	void input_particles();
 	void output_particles();
 	void interactive_plot(int* argc, char*** argv);
+	bool emit_convergence(const ParticleDataBase3D& pdb, double max_error = 1.0e-4) const;
+	bool scharge_convergence(const MeshScalarField& scharge, double max_error = 1.0e-4) const;
 
+private:
 	bool fout[3] = {true, true, true};
 };
