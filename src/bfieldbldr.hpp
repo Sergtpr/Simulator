@@ -9,9 +9,10 @@
 
 class BfieldObj {
 public:
-	int left_edge = 0, right_edge = 0;
-	double xscale = 1.0e-3, scale = 0;
-	std::string obj_name = "null";
+	int left_edge, right_edge;
+	double xscale, scale;
+	double translation;
+	std::string obj_name;
 	BfieldObj(const FileMan& fm, const std::string& name);
 };
 

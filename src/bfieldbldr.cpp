@@ -1,31 +1,36 @@
 #include "bfieldbldr.hpp"
 #include "fileman.hpp"
+#include "vec3d.hpp"
 
 #include <iostream>
 #include <sstream>
 #include <fstream>
 #include <utility>
 
+#define os std::cout
+
 BfieldObj::BfieldObj(const FileMan& fm, const std::string& name){
-	std::string filename(fm.get_main_dir() + "/bfield/" + name + "/" + name + ".txt");
-	obj_name = fm.get_main_dir() + "/bfield/" + name + "/" + name;
+	os << "BfieldObj starts" << std::endl;
+	std::string filename(fm.get_path() + "/bfields/" + name + "/" + name + ".txt");
+	obj_name = fm.get_path() + "/bfields/" + name + "/" + name;
 	std::ifstream file(filename);
+	os << "BF_OBJ " << name << ": " << std::endl;
+	
 	for (std::string line; std::getline(file, line, ';');){
 		std::istringstream is(line);
 		std::string command;
 		is >> command;
 		if (command == "LEFT_AND_RIGHT_EDGES"){
-			is >> left_edge;
-			is >> right_edge;
-			std::cout << "BF_OBJ " << name << ": " << std::endl;
-			std::cout << "LEFT_AND_RIGHT_EDGES" << left_edge << " " << right_edge << std::endl;
-		} else 
-		if ( command == "XSCALE_AND_SCALE" ){
-			is >> xscale;
-			is >> scale;
-			std::cout << "XSCALE_AND_SCALE" << xscale << " " << scale << std::endl;
+			is >> left_edge >> right_edge;
+			os << "LEFT_AND_RIGHT_EDGES: " << left_edge << " " << right_edge << std::endl;
+		} else if ( command == "XSCALE_AND_SCALE" ){
+			is >> xscale >> scale;
+			os << "XSCALE_AND_SCALE: " << xscale << " " << scale << std::endl;
+		} if ( command == "TRANSLATION" ){
+			is >> translation;
+			os << "TRANSLATION: " << translation << std::endl;
 		} else {
-			std::cout << "Warning: unknown command (BfieldObj)" << std::endl;
+			os << "WARNING: unknown command (BfieldObj): " << command << std::endl;
 		}
 	}
 	file.close();
