@@ -1,7 +1,7 @@
 CC = g++
 LDFLAGS = `pkg-config --libs ibsimu-1.0.6dev`
 CXXFLAGS = -Wall -g `pkg-config --cflags ibsimu-1.0.6dev`
-all: fileman.o bfieldbldr.o confbldr.o geombldr.o parameters.o simulator.o solidbldr.o
+all: fileman.o bfieldbldr.o confbldr.o geombldr.o parameters.o simulator.o solidbldr.o analyser.o
 
 fileman.o: fileman.cpp fileman.hpp
 	$(CC) fileman.cpp -c -o fileman.o  $(CXXFLAGS)
@@ -23,6 +23,9 @@ simulator.o: simulator.cpp simulator.hpp
 
 solidbldr.o: solidbldr.cpp solidbldr.hpp
 	$(CC) solidbldr.cpp -c -o solidbldr.o $(CXXFLAGS)
+
+analyser.o: analyser.cpp analyser.hpp
+	$(CC) analyser.cpp -c -o analyser.o $(CXXFLAGS)
 
 clean:
 	$(RM) *~ *.o 

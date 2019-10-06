@@ -14,6 +14,8 @@
 
 using Solids = std::vector<std::pair<Solid*, double>>;
 
+#define os std::cout
+
 template <class T> T max(const std::vector<T> vec);
 std::vector<double> GetEmitParametersFromPDB3D(const Geometry& geom, const ParticleDataBase3D& pdb);
 
@@ -25,7 +27,8 @@ Simulator::Simulator(const FileMan& fm, int n_o_p)
 	_bfield( MODE_3D, fout, _geom.size(), _geom.origo(), _geom.h() ),
 	_pdb( _geom ), _scharge( _geom ), _epot( _geom ), _efield( _epot )
 	{
-
+		os << "Simulator starts" << std::endl;
+		_fm.set_output_path(_par.get_output_name());
 		{
 			_geom.set_boundary( 1, Bound(BOUND_NEUMANN,     0.0  ) );
 			_geom.set_boundary( 2, Bound(BOUND_NEUMANN,     0.0  ) );
@@ -33,8 +36,16 @@ Simulator::Simulator(const FileMan& fm, int n_o_p)
 			_geom.set_boundary( 4, Bound(BOUND_NEUMANN,     0.0  ) );
 			_geom.set_boundary( 5, Bound(BOUND_NEUMANN,     0.0  ) );
 
+			double V_GND = 0;
+			if (_par.V.count("puller") == 0){
+				std::cout << "puller solid is not found" << std::endl;
+				std::cout << "Set gnd potential = -60e3" << std::endl;
+				V_GND = -60e3;
+			} else {
+				V_GND = _par.V.at("puller");
+			}
 			if (n_o_p == _gb.num_of_parts - 1){
-				_geom.set_boundary( 6, Bound(BOUND_DIRICHLET,   _par.V.at("puller")  ) );
+				_geom.set_boundary( 6, Bound(BOUND_DIRICHLET,   V_GND  ) );
 			} else {
 				_geom.set_boundary( 6, Bound(BOUND_NEUMANN,     0.0  ) );
 			}
@@ -47,7 +58,34 @@ Simulator::Simulator(const FileMan& fm, int n_o_p)
 		FIELD_EXTRAPOLATE, FIELD_EXTRAPOLATE, 
 		FIELD_EXTRAPOLATE, FIELD_EXTRAPOLATE };
 	_efield.set_extrapolation( efldextrpl );
+}
 
+void Simulator::set_geom(){
+	std::ifstream is_geom(_fm.get_output_path() + "/geom" + to_string(_n_o_p) + ".dat" );
+	if( !is_geom.good() )
+	throw( Error( ERROR_LOCATION, (std::string)"couldn\'t open file \'" + "geom" + "\'" ) );
+    Geometry geom( is_geom );
+    is_geom.close();
+    _geom = geom;
+    _geom.build_surface();
+}
+
+void Simulator::set_epot(){
+	std::ifstream is_epot( _fm.get_output_path() + "/epot" + to_string(_n_o_p) + ".dat" );
+    if( !is_epot.good() )
+	throw( Error( ERROR_LOCATION, (std::string)"couldn\'t open file \'" + "epot" + "\'" ) );
+    EpotField epot( is_epot, _geom );
+    is_epot.close();
+    _epot = epot;
+}
+
+void Simulator::set_pdb(){
+	std::ifstream is_pdb( _fm.get_output_path() + "/pdb" + to_string(_n_o_p) + ".dat" );
+    if( !is_pdb.good() )
+	throw( Error( ERROR_LOCATION, (std::string)"couldn\'t open file \'" + "pdb" + "\'" ) );
+    ParticleDataBase3D pdb( is_pdb, _geom );
+    is_pdb.close();
+    _pdb = pdb;
 }
 
 void Simulator::set_solids(const Solids& solids){
@@ -75,7 +113,10 @@ void Simulator::add_beam(){
 }
 
 void Simulator::input_particles(){
-	ReadAscii din( "particles.txt", 10 );
+	std::string input = _fm.get_output_path() + "/" + "particles_" +  
+			to_string(_n_o_p - 1) + "_" + to_string(_n_o_p) + ".txt";
+
+	ReadAscii din( input, 10 );
 	std::cout << "Reading " << din.rows() << " particles\n";
 	// Go through all read particles
 	for( size_t j = 0; j < din.rows(); j++ ) {
@@ -95,7 +136,8 @@ void Simulator::input_particles(){
 
 void Simulator::output_particles(){
 	// Writing output file containing all particles:
-		std::ofstream fileOut( "particles.txt" );
+		std::ofstream fileOut( _fm.get_output_path() + "/" + "particles_" +  
+			to_string(_n_o_p) + "_" + to_string(_n_o_p + 1) + ".txt" );
 		for( size_t k = 0; k < _pdb.size(); k++ ) {
 
 		Particle3D &pp = _pdb.particle( k );
@@ -239,6 +281,12 @@ bool Simulator::scharge_convergence(const MeshScalarField& scharge, double max_e
 		std::cout << "--------------------------------------" << std::endl;	
 		return false;			
 	}
+}
+
+void Simulator::save() const {
+	_geom.save(_fm.get_output_path() + "/geom" + to_string(_n_o_p) + ".dat");
+	_epot.save(_fm.get_output_path() + "/epot" + to_string(_n_o_p) + ".dat");
+	_pdb.save(_fm.get_output_path() + "/pdb" + to_string(_n_o_p) + ".dat");
 }
 
 template <class T> T max(const std::vector<T> vec){

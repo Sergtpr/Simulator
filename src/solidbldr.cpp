@@ -9,8 +9,11 @@
 
 using Solids = std::vector<std::pair<Solid*, double>>;
 
+#define os std::cout
+
 SolidBldr::SolidBldr(const FileMan& fm){
-	std::string filename(fm.get_main_dir() + "/geometry/" + fm.get_geom_fn() + "/" + fm.get_geom_fn());
+	os << "SolidBldr starts" << std::endl;
+	std::string filename(fm.get_path() + "/geometry/" + fm.get_geom_fn() + "/" + fm.get_geom_fn());
 	name = filename + ".dxf";
 	filename = filename + ".txt";
 
@@ -38,7 +41,8 @@ Solids SolidBldr::get_solids_from_parameters(const Parameters& _par) const {
 	Solids result;
 	for (const auto& item : _par.V){
 		if ( solids.count(item.first) == 0 ){
-			std::cout << "Parameters use unknown solid_name" << item.first << std::endl;
+			if (item.first != "gnd")
+				std::cout << "Parameters use unknown solid_name " << item.first << std::endl;
 		} else {
 			result.push_back(std::make_pair(solids.at(item.first), item.second));
 		}
