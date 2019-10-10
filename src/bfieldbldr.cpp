@@ -11,8 +11,8 @@
 
 BfieldObj::BfieldObj(const FileMan& fm, const std::string& name){
 	os << "BfieldObj starts" << std::endl;
-	std::string filename(fm.get_path() + "/bfields/" + name + "/" + name + ".txt");
-	obj_name = fm.get_path() + "/bfields/" + name + "/" + name;
+	std::string filename(fm.get_main_dir() + "/bfields/" + name + "/" + name + ".txt");
+	obj_name = fm.get_main_dir() + "/bfields/" + name + "/" + name;
 	std::ifstream file(filename);
 	os << "BF_OBJ " << name << ": " << std::endl;
 	
@@ -52,9 +52,14 @@ void BfieldBldr::add_to_bfield(MeshVectorField& bf, const Geometry& geom, int n_
 			FIELD_ZERO, FIELD_ZERO };
 	for (const auto& item : bfobjs){
 		if ( item.second.left_edge <= n_o_p && n_o_p <= item.second.right_edge ){
-			MeshVectorField bf_cyl( MODE_CYL, fout, item.second.xscale, item.second.scale, item.second.obj_name + to_string(n_o_p) + ".dat" );
-			bf_cyl.set_extrapolation( bfldextrpl );
+			std::string bf_filename(item.second.obj_name);
+						
+			MeshVectorField bf_cyl( MODE_CYL, fout, item.second.xscale, item.second.scale, bf_filename + to_string(n_o_p) + ".dat" );
+			bf_cyl.translate(Vec3D(item.second.translation, 0));
+
 			MeshVectorField bf_temp( MODE_3D, fout, geom.size(), geom.origo(), geom.h(), bf_cyl);
+			bf_temp.set_extrapolation( bfldextrpl );
+
 			bf += bf_temp;
 		}
 	}
