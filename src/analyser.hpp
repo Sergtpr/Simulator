@@ -7,24 +7,38 @@
 #include "epot_efield.hpp"
 
 #include "simulator.hpp"
+#include "geomplotter.hpp"
 
 #define LIGHT_VEL 299792458
 
 class Analyser {
 public:
 
-	double get_current() const;
-	double get_normalized_emit() const;
+	double get_current(double z) const;
+	double get_normalized_emit(double z) const;
 	double get_beam_angle(double z, double dz) const;
 	double get_r_rms(double z) const;
-	void save(const std::string& path) const;
+	double get_r_max(double z) const;
+	void save(const std::string& path, double z) const;
 
 	Analyser(Simulator& sim) 
-	: _geom(sim._geom), _epot(sim._epot), _pdb(sim._pdb) {}
-	//Analyser(const Geometry& geom, const MeshScalarField& epot, const ParticleDataBase3D& pdb)
-	//	: _geom(geom), _epot(epot), _pdb(pdb) {} 
+	: _geom(sim._geom), _bfield(sim._bfield), _tdens(sim._tdens),
+	_pdb(sim._pdb), _scharge(sim._scharge), _epot(sim._epot),
+	_efield(sim._efield), path(sim._fm.get_output_path() + "/pictures") {
+		_n_o_p = sim._n_o_p;
+	}
+
+	void plot_field(field_type_e fte, view_e v); //EPOT, SCHARGE, TDENS, EFIELD,(Z)
+	void plot_pdb(view_e v);
+
 private:
-	const Geometry& _geom;
-	const MeshScalarField& _epot;
-	const ParticleDataBase3D& _pdb;
+	int _n_o_p;
+	Geometry& _geom;
+	MeshVectorField& _bfield;
+	MeshScalarField& _tdens;
+	ParticleDataBase3D& _pdb;
+	MeshScalarField& _scharge;
+	EpotField& _epot;
+	EpotEfield& _efield;
+	std::string path;
 };

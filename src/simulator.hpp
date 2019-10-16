@@ -31,6 +31,7 @@ public:
 	Geometry _geom;
 	EpotBiCGSTABSolver _solver;
 	MeshVectorField _bfield;
+	MeshScalarField _tdens;
 	ParticleDataBase3D _pdb;
 	MeshScalarField _scharge;
 	EpotField _epot;

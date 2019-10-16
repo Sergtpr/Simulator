@@ -23,9 +23,8 @@ Simulator::Simulator(const FileMan& fm, int n_o_p)
 	: _n_o_p(n_o_p), _fm(fm), _gb(fm), 
 	_bb(fm), _cb(fm), _par(fm),
 	_geom(MODE_3D, _gb.get_meshsize(n_o_p), _gb.get_origin(n_o_p), _gb.get_h(n_o_p)),
-	_solver( _geom ),
-	_bfield( MODE_3D, fout, _geom.size(), _geom.origo(), _geom.h() ),
-	_pdb( _geom ), _scharge( _geom ), _epot( _geom ), _efield( _epot )
+	_solver( _geom ), _bfield( MODE_3D, fout, _geom.size(), _geom.origo(), _geom.h() ),
+	_tdens( _geom ), _pdb( _geom ), _scharge( _geom ), _epot( _geom ), _efield( _epot )
 	{
 		os << "Simulator starts" << std::endl;
 		_fm.set_output_path(_par.get_output_name());
@@ -51,6 +50,10 @@ Simulator::Simulator(const FileMan& fm, int n_o_p)
 			}
 		}
 
+		_geom.build_mesh();
+		_geom.build_surface();
+
+
 	bool pmirror[6] = { false, false, false, false, false, false };
 	_pdb.set_mirror( pmirror );	
 
@@ -58,6 +61,9 @@ Simulator::Simulator(const FileMan& fm, int n_o_p)
 		FIELD_EXTRAPOLATE, FIELD_EXTRAPOLATE, 
 		FIELD_EXTRAPOLATE, FIELD_EXTRAPOLATE };
 	_efield.set_extrapolation( efldextrpl );
+	bool __fout[3] = {true, true, true};
+	_bfield.reset(MODE_3D, __fout, _geom.size(), _geom.origo(), _geom.h());
+	_bfield.reset_transformation();
 }
 
 void Simulator::set_geom(){
@@ -65,9 +71,16 @@ void Simulator::set_geom(){
 	if( !is_geom.good() )
 	throw( Error( ERROR_LOCATION, (std::string)"couldn\'t open file \'" + "geom" + "\'" ) );
     Geometry geom( is_geom );
+
     is_geom.close();
     _geom = geom;
-    _geom.build_surface();
+    _geom.set_boundary( 1, Bound(BOUND_NEUMANN,     0.0  ) );
+	_geom.set_boundary( 2, Bound(BOUND_NEUMANN,     0.0  ) );
+	_geom.set_boundary( 3, Bound(BOUND_NEUMANN,     0.0  ) );
+	_geom.set_boundary( 4, Bound(BOUND_NEUMANN,     0.0  ) );
+	_geom.set_boundary( 5, Bound(BOUND_NEUMANN,     0.0  ) );
+	_geom.set_boundary( 6, Bound(BOUND_NEUMANN,     0.0  ) );
+	_geom.build_surface();
 }
 
 void Simulator::set_epot(){
@@ -77,7 +90,7 @@ void Simulator::set_epot(){
     EpotField epot( is_epot, _geom );
     is_epot.close();
     _epot = epot;
-}
+ }
 
 void Simulator::set_pdb(){
 	std::ifstream is_pdb( _fm.get_output_path() + "/pdb" + to_string(_n_o_p) + ".dat" );
@@ -86,6 +99,7 @@ void Simulator::set_pdb(){
     ParticleDataBase3D pdb( is_pdb, _geom );
     is_pdb.close();
     _pdb = pdb;
+    _pdb.build_trajectory_density_field(_tdens);
 }
 
 void Simulator::set_solids(const Solids& solids){
@@ -95,16 +109,23 @@ void Simulator::set_solids(const Solids& solids){
 		_geom.set_boundary(solid_number, Bound(BOUND_DIRICHLET, solid.second));
 	}
 	_geom.build_mesh();
-	_geom.build_surface();
 }
 
 void Simulator::add_beam(){
 	if (_n_o_p == 0){
 		for (const auto& beam : _par.beam){
 			double frac = beam.J/_par.Jtotal;
+			double _T, _E;
+			if (beam.m < 0.5){
+				_T = _cb.Te;
+				_E = 20;
+			} else {
+				_T = _cb.Ti;
+				_E = _cb.Energy;
+			}
 			_pdb.add_cylindrical_beam_with_energy(
-				_cb.N*frac, beam.J, beam.q, beam.m, _cb.Energy, 
-				0.0, _cb.Ti, Vec3D(0, 0, _gb.start_of_beam), 
+				_cb.N*frac, beam.J, beam.q, beam.m, _E, 
+				0.0, _T, Vec3D(0, 0, _gb.start_of_beam), 
 				Vec3D(1, 0, 0), Vec3D(0, 1, 0), _gb.rad_beam);
 		}
 	} else {
@@ -209,12 +230,13 @@ void Simulator::compute(){
 				scharge_ave = _scharge;
 			} else {
 				double sc_alpha = 1.0;
+				sc_alpha = _cb.alpha_aver;
 				double sc_beta = 1 - sc_alpha;
 				for (size_t b = 0; b < nodecount; b++){
 					scharge_ave(b) = sc_alpha*_scharge(b) + sc_beta*scharge_ave(b);
 				}
 			}
-		if ( i == 0){
+		if ( i == 0 ){
 			scharge1 = _scharge;
 			pdb1 = _pdb;
 		} else {
@@ -226,6 +248,7 @@ void Simulator::compute(){
 		}
 		i++;
 	}
+	_pdb.build_trajectory_density_field(_tdens);
 	output_particles();
 }
 
@@ -233,6 +256,7 @@ void Simulator::interactive_plot(int* argc, char*** argv){
 	GTKPlotter plotter( argc, argv );
 	plotter.set_geometry( &_geom );
 	plotter.set_epot( &_epot );
+	plotter.set_trajdens( &_tdens );
 	plotter.set_scharge( &_scharge );
 	plotter.set_particledatabase( &_pdb );
 	plotter.set_bfield( &_bfield );
