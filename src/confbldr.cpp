@@ -32,7 +32,12 @@ ConfBldr::ConfBldr(const FileMan& fm){
 		} else if ( command == "N_CYCLES_MAX" ){
 			is >> Ncycles;
 			os << "N_CYCLES_MAX: " << Ncycles << std::endl;
-		} else {
+		} else 
+		if ( command == "AVERAGING_ALPHA" ){
+			is >> alpha_aver;
+			os << "AVERAGING_ALPHA: " << alpha_aver << std::endl;
+		} else 
+		{
 			os << "WARNING: unknown command (ConfBldr): " << command << std::endl;
 		}
 	}

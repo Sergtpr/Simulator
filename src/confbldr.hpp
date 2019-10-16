@@ -9,6 +9,7 @@ public:
 	double Energy;
 	double Te;
 	double Ti;
+	double alpha_aver;
 	size_t Ncycles;
 	ConfBldr(const FileMan& fm);
 };
